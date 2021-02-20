@@ -22,80 +22,50 @@ QPushButton[whatsThis="btnButton"]
 class QRoundButton : public QPushButton
 {
     Q_OBJECT
-    Q_PROPERTY(QColor borderColor READ getBorderColor WRITE setBorderColor)
-    Q_PROPERTY(QColor fillColor READ getFillColor WRITE setFillColor)
-    Q_PROPERTY(int cornerRadius READ getCornerRadius WRITE setCornerRadius)
-    Q_PROPERTY(int borderSize READ getBorderSize WRITE setBorderSize)
+    Q_PROPERTY(QColor borderColor MEMBER m_BorderColor)
+    Q_PROPERTY(QColor fillColor MEMBER m_FillColor)
+    Q_PROPERTY(int cornerRadius MEMBER m_nRadius)
+    Q_PROPERTY(int borderSize MEMBER m_nBorderSize)
 
 public:
-    QRoundButton(QWidget* parent = Q_NULLPTR, int nBorderSize = 2);
+    QRoundButton(QWidget *parent = Q_NULLPTR, int nBorderSize = 2);
     ~QRoundButton();
 
-    void setBorderColor(const QColor& color) { m_BorderColor = color; }
-    QColor getBorderColor() const { return m_BorderColor; };
-
-    void setFillColor(const QColor& color) { m_FillColor = color; }
-    QColor getFillColor() const { return m_FillColor; }
-
-    void setBorderSize(const int size) { m_nBorderSize = size; }
-    int getBorderSize() const { return m_nBorderSize; };
-
     void setProgress(qreal progress) { m_fProgress = progress; }
-    qreal getProgress() { return m_fProgress; }
 
-    void setCornerRadius(int radius) { m_nRadius = radius; }
-    int getCornerRadius() const { return m_nRadius; }
-
-    QPainterPath getPathLeft(qreal x);
-    QPainterPath getPathCenter(qreal x);
-    QPainterPath getPathRight(qreal x);
+    void getPathLeft(qreal x, QPainterPath& fillPath, QPainterPath& borderPath);
+    void getPathCenter(qreal x, QPainterPath& fillPath, QPainterPath& borderPath);
+    void getPathRight(qreal x, QPainterPath& fillPath, QPainterPath& borderPath);
 
 protected:
     void paintEvent(QPaintEvent* e) override;
     void timerEvent(QTimerEvent* e) override;
 
 private:
-    QColor m_BorderColor;
-    QColor m_FillColor;
-    int    m_nBorderSize;
-    qreal  m_fProgress;
-    int    m_nTimerId;
-    int    m_nRadius;
+    QColor     m_BorderColor{ QColor(255, 255, 255) };
+    QColor     m_FillColor{ QColor(0, 255, 0, 127) };
+    int64_t    m_nBorderSize{};
+    qreal      m_fProgress{ 0 };
+    int        m_nTimerId{ 0 };
+    int64_t    m_nRadius{ 0 };
 };
 ```
 
 ```cpp
 //QRoundButton.cpp
 #include "QRoundButton.h"
-#include <QResource>
-#include <QVBoxLayout>
-#include <QDebug>
-#include <QPushButton>
-#include <QtSvg/QSvgWidget>
-#include <QTextEdit>
-#include <QFontMetrics>
-#include <QApplication>
-#include <QTextDocument>
-#include <QTextFrame>
 #include <QPainter>
-#include <QStyleOption>
-#include <QDateTime>
-#include <QTimer>
+#include <QStyleOptionButton>
+#include <QTimerEvent>
 #include <QtMath>
-#include <QPainterPath>
+#include <windows.h>
 
-QRoundButton::QRoundButton(QWidget* parent, int nBorderSize)
-    : QPushButton(parent),
-    m_BorderColor(QColor(255, 255, 255)),
-    m_FillColor(QColor(0, 255, 0, 127)),   // 默认填充颜色为半透明绿色
-    m_nBorderSize(nBorderSize),
-    m_fProgress(0),
-    m_nTimerId(0),
-    m_nRadius(0)
+QRoundButton::QRoundButton(QWidget *parent, int nBorderSize /*= 2*/)
+    : QPushButton(parent), m_nBorderSize(nBorderSize)
 {
     if (m_nTimerId == 0)
     {
-        m_nTimerId = this->startTimer(50, Qt::PreciseTimer);
+        m_nTimerId = this->startTimer(100, Qt::PreciseTimer);
     }
 }
 
@@ -108,73 +78,78 @@ QRoundButton::~QRoundButton()
     }
 }
 
-QPainterPath QRoundButton::getPathLeft(qreal x)
+void QRoundButton::getPathLeft(qreal x, QPainterPath& fillPath, QPainterPath& borderPath)
 {
+    if (qFuzzyCompare(x + 1.0, 1.0))
+    {
+        fillPath = QPainterPath();
+        borderPath = QPainterPath();
+    }
+
     QPainterPath path;
     qreal r = m_nRadius;
     qreal y = qSqrt(r * r - (r - x) * (r - x));
     qreal theta = qFabs(qAcos((r - x) / r)) / M_PI * 180;
     QRectF innerRect = rect();
-    innerRect.adjust(m_nBorderSize, m_nBorderSize, -m_nBorderSize, 0);
-    path.moveTo(innerRect.x() + x, innerRect.y() + (r - y));
-    path.lineTo(innerRect.x() + x, innerRect.height() - 2 * (r - y) + 2);
-    path.arcTo(innerRect.x(), innerRect.height() - 2 * r, r * 2, r * 2, -(180 - theta), -theta);
+    innerRect.adjust(m_nBorderSize / 2, m_nBorderSize / 2, -m_nBorderSize / 2, -m_nBorderSize / 2);
+
+    path.moveTo(innerRect.x() + x, innerRect.y() + innerRect.height() - (r - y));
+    path.arcTo(innerRect.x(), innerRect.y() + innerRect.height() - 2 * r, r * 2, r * 2, -(180 - theta), -theta);
     path.lineTo(innerRect.x(), innerRect.y() + r);
     path.arcTo(innerRect.x(), innerRect.y(), 2 * r, 2 * r, -180, -theta);
-    return path;
+
+    borderPath = path;
+
+    path.lineTo(innerRect.x() + x, innerRect.y() + innerRect.height() - (r - y));
+    fillPath = path;
 }
 
-QPainterPath QRoundButton::getPathCenter(qreal x)
+void QRoundButton::getPathCenter(qreal x, QPainterPath& fillPath, QPainterPath& borderPath)
 {
     QPainterPath path;
     qreal r = m_nRadius;
-    qreal y = r;
     QRectF innerRect = rect();
-    innerRect.adjust(m_nBorderSize, m_nBorderSize, -m_nBorderSize, 0);
-    path.moveTo(innerRect.x() + r, innerRect.y());
-    path.lineTo(innerRect.x() + x, innerRect.y());
-    path.lineTo(innerRect.x() + x, innerRect.height());
-    path.lineTo(innerRect.x() + r, innerRect.height());
-    path.arcTo(innerRect.x(), innerRect.height() - 2 * r, r * 2, r * 2, -90, -90);
+    innerRect.adjust(m_nBorderSize / 2, m_nBorderSize / 2, -m_nBorderSize / 2, -m_nBorderSize / 2);
+    path.moveTo(innerRect.x() + x, innerRect.y() + innerRect.height());
+    path.lineTo(innerRect.x() + r, innerRect.y() + innerRect.height());
+    path.arcTo(innerRect.x(), innerRect.y() + innerRect.height() - 2 * r, r * 2, r * 2, -90, -90);
     path.lineTo(innerRect.x(), innerRect.y() + r);
     path.arcTo(innerRect.x(), innerRect.y(), 2 * r, 2 * r, -180, -90);
-    return path;
+    path.lineTo(innerRect.x() + x, innerRect.y());
+
+    borderPath = path;
+    path.lineTo(innerRect.x() + x, innerRect.y() + innerRect.height());
+    fillPath = path;
 }
 
-QPainterPath QRoundButton::getPathRight(qreal x)
+void QRoundButton::getPathRight(qreal x, QPainterPath& fillPath, QPainterPath& borderPath)
 {
     QRectF innerRect = rect();
-    innerRect.adjust(m_nBorderSize, m_nBorderSize, -m_nBorderSize, 0);
+    innerRect.adjust(m_nBorderSize / 2, m_nBorderSize / 2, -m_nBorderSize / 2, -m_nBorderSize / 2);
     QPainterPath path;
     qreal r = m_nRadius;
     qreal w = innerRect.width();
     qreal xdot = r - w + x;
     qreal y = qSqrt(r * r - xdot * xdot);
     qreal theta = qFabs(qAcos(xdot / r)) / M_PI * 180;
-    
-    path.moveTo(innerRect.x() + r, innerRect.y());
-    path.lineTo(innerRect.x() + w - r, innerRect.y());
-    path.arcTo(innerRect.x() + w - 2 * r, innerRect.y(), 2 * r, 2 * r, 90, -(90 - theta));
-    path.lineTo(innerRect.x() + x, innerRect.height() - 2 * (r - y));
-    path.arcTo(innerRect.x() + w - 2 * r, innerRect.height() - 2 * r, 2 * r, 2 * r, -theta, -(90 - theta));
-    path.lineTo(innerRect.x() + r, innerRect.height());
 
-    path.arcTo(innerRect.x(), innerRect.height() - 2 * r, r * 2, r * 2, -90, -90);
+    path.moveTo(innerRect.x() + x, innerRect.y() + innerRect.height() - (r - y));
+    path.arcTo(innerRect.x() + w - 2 * r, innerRect.y() + innerRect.height() - 2 * r, 2 * r, 2 * r, -theta, -(90 - theta));
+    path.lineTo(innerRect.x() + r, innerRect.y() + innerRect.height());
+
+    path.arcTo(innerRect.x(), innerRect.y() + innerRect.height() - 2 * r, r * 2, r * 2, -90, -90);
     path.lineTo(innerRect.x(), innerRect.y() + r);
     path.arcTo(innerRect.x(), innerRect.y(), 2 * r, 2 * r, -180, -90);
-    return path;
+    path.lineTo(innerRect.x() + w - r, innerRect.y());
+    path.arcTo(innerRect.x() + w - 2 * r, innerRect.y(), 2 * r, 2 * r, 90, -(90 - theta));
+    borderPath = path;
+    path.lineTo(innerRect.x() + x, innerRect.y() + innerRect.height() - (r - y));
+    fillPath = path;
 }
+
 
 void QRoundButton::paintEvent(QPaintEvent* e)
 {
-    /*QStyleOption opt;
-    opt.init(this);
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    style()->drawPrimitive(QStyle::PE_Widget, &opt, &painter, this);
-    painter.drawText(rect(), Qt::AlignCenter, text());*/
-
-
     QStyleOptionButton option;
     option.initFrom(this);
     if (isDown())
@@ -202,31 +177,37 @@ void QRoundButton::paintEvent(QPaintEvent* e)
     painter.restore();
 
     // 画进度条
-    /*painter.save();
+    painter.save();
     QRectF innerRect = rect();
     innerRect.adjust(m_nBorderSize, m_nBorderSize, -m_nBorderSize, -m_nBorderSize);
     qreal x = m_fProgress * innerRect.width();
-    QPainterPath path;
+    QPainterPath fPath;
+    QPainterPath bPath;
     if (x < m_nRadius)
     {
-        path = getPathLeft(x);
+        getPathLeft(x, fPath, bPath);
     }
     else if (x < innerRect.width() - m_nRadius)
     {
-        path = getPathCenter(x);
+        getPathCenter(x, fPath, bPath);
     }
     else if (x < innerRect.width())
     {
-        path = getPathRight(x);
+        getPathRight(x, fPath, bPath);
     }
     else
     {
-        path.addRoundedRect(innerRect, m_nRadius, m_nRadius);
+        innerRect = rect();
+        innerRect.adjust(m_nBorderSize / 2, m_nBorderSize / 2, -m_nBorderSize / 2, -m_nBorderSize / 2);
+        fPath.addRoundedRect(innerRect, m_nRadius, m_nRadius);
+        bPath = fPath;
     }
-    painter.fillPath(path, QColor(255, 0, 0, 200));
-    painter.restore();*/
+    painter.fillPath(fPath, QColor(255, 0, 0, 20));
+    painter.setPen(QPen(QColor(0, 255, 0), 2));
+    painter.drawPath(bPath);
+    painter.restore();
 
-    painter.save();
+    /*painter.save();
     QRectF innerRect = rect();
     innerRect.adjust(m_nBorderSize, m_nBorderSize, -m_nBorderSize, -m_nBorderSize);
     qreal x = m_fProgress * innerRect.width();
@@ -239,11 +220,12 @@ void QRoundButton::paintEvent(QPaintEvent* e)
     innerRect.adjust(m_nBorderSize, m_nBorderSize, -m_nBorderSize, -m_nBorderSize);
     innerRect.adjust(0, 0, -max((innerRect.width() - x - m_nRadius), 0), 0);
     QPainterPath roundRectPath;
-    roundRectPath.addRoundedRect(innerRect, 26, 26);
+    roundRectPath.addRoundedRect(innerRect, m_nRadius - m_nBorderSize, m_nRadius - m_nBorderSize);
     QPainterPath inner = roundRectPath.intersected(rectPath);
+    QPen p(QColor(255, 255, 255, 175), m_nBorderSize);
     painter.fillPath(inner, m_FillColor);
-    painter.restore();
 
+    painter.restore();*/
 }
 
 void QRoundButton::timerEvent(QTimerEvent* e)
@@ -257,7 +239,6 @@ void QRoundButton::timerEvent(QTimerEvent* e)
     }
     update();
 }
-
 ```
 
 在 main 函数中使用
