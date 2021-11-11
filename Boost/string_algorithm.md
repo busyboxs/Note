@@ -201,6 +201,8 @@
 
 ### Join
 
+|Algorithm name|Description|Functions|
+|:-------------|:----------|:--------|
 |`join`|Join all elements in a container into a single string|<ul><li>[join()](https://www.boost.org/doc/libs/1_75_0/doc/html/boost/algorithm/join.html)</li></ul>|
 |`join_if`|Join all elements in a container that satisfies the condition into a single string|<ul><li>[join_if()](https://www.boost.org/doc/libs/1_75_0/doc/html/boost/algorithm/join_if_1_3_3_9_14_3_1_2.html)</li></ul>|
 
